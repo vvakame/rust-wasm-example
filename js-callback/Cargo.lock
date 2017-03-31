@@ -1,0 +1,4 @@
+[root]
+name = "helloworld-with-cargo"
+version = "0.1.0"
+

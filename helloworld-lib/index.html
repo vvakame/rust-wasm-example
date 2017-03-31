@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>exec wasm code</title>
+    <meta charset="UTF-8">
+</head>
+
+<body>
+    Add a + b.<br>
+    <input type="text" id="a"><br>
+    <input type="text" id="b"><br>
+    <span id="result"><span>
+
+    <script type='text/javascript'>
+        "use strict";
+
+        const namePrefix = "hello";
+        var Module = {
+            preRun: [],
+            postRun: [],
+            wasmBinaryFile: `${namePrefix}.wasm`,
+            print: text => {
+                console.log(text);
+            },
+            printErr: text => {
+                console.warn(text);
+            },
+        };
+        fetch(`${namePrefix}.wasm`)
+            .then(resp => resp.arrayBuffer())
+            .then(ab => {
+                Module.wasmBinary = ab;
+
+                return new Promise(resolve => {
+                    const script = document.createElement("script");
+                    script.src = `${namePrefix}.js`;
+                    script.addEventListener("load", resolve);
+                    document.body.appendChild(script);
+                });
+            })
+            .then(() => {
+                const add = Module.cwrap("add", "number", ["number", "number"]);
+
+                const aEl = document.querySelector("#a");
+                const bEl = document.querySelector("#b");
+                const resultEl = document.querySelector("#result");
+                const callback = () => {
+                    const a = parseInt(aEl.value);
+                    const b = parseInt(bEl.value);
+                    resultEl.innerText = `${add(a, b)}`;
+                };
+                aEl.addEventListener("keyup", callback);
+                bEl.addEventListener("keyup", callback);
+            });
+    </script>
+</body>
+
+</html>

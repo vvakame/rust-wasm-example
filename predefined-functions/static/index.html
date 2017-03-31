@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>exec wasm code</title>
+    <meta charset="UTF-8">
+</head>
+
+<body>
+    <h2>Call predefined js function from Rust.</h2>
+    <!-- see static/emcc-bind.js -->
+    <input type="text" id="h" value="alert('eval!');"><br>
+    <button id="exec6">exec</button>
+
+    <script type='text/javascript'>
+        "use strict";
+
+        const namePrefix = "lib";
+        var Module = {
+            preRun: [],
+            postRun: [],
+            wasmBinaryFile: `${namePrefix}.wasm`,
+            noInitialRun: true, // don't run `fn main()`. but we can call `pub fn add(a: i32, b: i32) -> i32`.
+            print: text => {
+                console.log(text);
+            },
+            printErr: text => {
+                console.warn(text);
+            },
+        };
+        fetch(`${namePrefix}.wasm`)
+            .then(resp => resp.arrayBuffer())
+            .then(ab => {
+                Module.wasmBinary = ab;
+
+                return new Promise(resolve => {
+                    const script = document.createElement("script");
+                    script.src = `${namePrefix}.js`;
+                    script.addEventListener("load", resolve);
+                    document.body.appendChild(script);
+                });
+            })
+            .then(() => {
+                const execJSEval = Module.cwrap("exec_js_eval_c", void 0, ["string"]);
+
+                const hEl = document.querySelector("#h");
+                const buttonEl = document.querySelector("#exec6");
+
+                buttonEl.addEventListener("click", () => {
+                    execJSEval(hEl.value);
+                });
+            });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>exec wasm code</title>
+	<meta charset="UTF-8">
+</head>
+<body>
+	<h2>Concat c + d.</h2>
+	<input type="text" id="c"><br>
+	<input type="text" id="d"><br>
+	<span id="result"></span>
+
+	<script type='text/javascript'>
+		"use strict";
+
+		const namePrefix = "lib";
+		var Module = {
+			preRun: [],
+			postRun: [],
+			wasmBinaryFile: `${namePrefix}.wasm`,
+			noInitialRun: true, // don't run `fn main()`. but we can call `pub fn add(a: i32, b: i32) -> i32`.
+			print: text => {
+				console.log(text);
+			},
+			printErr: text => {
+				console.warn(text);
+			},
+		};
+		fetch(`${namePrefix}.wasm`)
+			.then(resp => resp.arrayBuffer())
+			.then(ab => {
+				Module.wasmBinary = ab;
+
+				return new Promise(resolve => {
+					const script = document.createElement("script");
+					script.src = `${namePrefix}.js`;
+					script.addEventListener("load", resolve);
+					document.body.appendChild(script);
+				});
+			})
+			.then(() => {
+				const concat = Module.cwrap("concat_c", "string", ["string", "string"]);
+
+				const cEl = document.querySelector("#c");
+				const dEl = document.querySelector("#d");
+				const resultEl = document.querySelector("#result");
+				const callback = () => {
+					const c = cEl.value;
+					const d = dEl.value;
+					resultEl.innerText = `${concat(c, d)}`;
+				};
+				cEl.addEventListener("keyup", callback);
+				dEl.addEventListener("keyup", callback);
+			});
+	</script>
+</body>
+</html>

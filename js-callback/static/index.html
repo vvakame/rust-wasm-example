@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<title>exec wasm code</title>
+	<meta charset="UTF-8">
+</head>
+
+<body>
+	<h2>Callback twice.</h2>
+	<input type="text" id="e"><br>
+	<button id="exec3">exec</button><br>
+	<span id="result3"></span>
+
+	<script type='text/javascript'>
+		"use strict";
+
+		const namePrefix = "lib";
+		var Module = {
+			preRun: [],
+			postRun: [],
+			wasmBinaryFile: `${namePrefix}.wasm`,
+			noInitialRun: true, // don't run `fn main()`. but we can call `pub fn add(a: i32, b: i32) -> i32`.
+			print: text => {
+				console.log(text);
+			},
+			printErr: text => {
+				console.warn(text);
+			},
+		};
+		fetch(`${namePrefix}.wasm`)
+			.then(resp => resp.arrayBuffer())
+			.then(ab => {
+				Module.wasmBinary = ab;
+
+				return new Promise(resolve => {
+					const script = document.createElement("script");
+					script.src = `${namePrefix}.js`;
+					script.addEventListener("load", resolve);
+					document.body.appendChild(script);
+				});
+			})
+			.then(() => {
+				const callbackTwice = (() => {
+					const rustFunc = Module.cwrap("callback_twice_c", void 0, ["string", "number"]);
+					return (v, callback) => {
+						if (typeof v !== "string") {
+							throw new Error("string required");
+						}
+						if (typeof callback !== "function") {
+							throw new Error("function required");
+						}
+
+						let funcPtr;
+						let counter = 0;
+						const wrapper = ptr => {
+							const str = Module.Pointer_stringify(ptr);
+							callback(str);
+
+							counter += 1;
+							if (counter === 2) {
+								Runtime.removeFunction(funcPtr);
+							}
+						};
+						funcPtr = Runtime.addFunction(wrapper);
+						rustFunc(v, funcPtr);
+					};
+				})();
+
+				const eEl = document.querySelector("#e");
+				const buttonEl = document.querySelector("#exec3");
+				const resultEl = document.querySelector("#result3");
+
+				buttonEl.addEventListener("click", () => {
+					buttonEl.disabled = true;
+
+					const str = eEl.value;
+					let array = [];
+					callbackTwice(str, str => {
+						array.push(str);
+						resultEl.innerText = JSON.stringify(array);
+					});
+				});
+			});
+	</script>
+</body>
+
+</html>

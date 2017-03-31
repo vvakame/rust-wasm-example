@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>exec wasm code</title>
+    <meta charset="UTF-8">
+</head>
+
+<body>
+    <h2>Add a + b.</h2>
+    <input type="text" id="a"><br>
+    <input type="text" id="b"><br>
+    <span id="result1"></span>
+
+    <hr>
+
+    <h2>Concat c + d.</h2>
+    <input type="text" id="c"><br>
+    <input type="text" id="d"><br>
+    <span id="result2"></span>
+
+    <hr>
+
+    <h2>Callback twice.</h2>
+    <input type="text" id="e"><br>
+    <button id="exec3">exec</button><br>
+    <span id="result3"></span>
+
+    <hr>
+
+    <h2>Call Rust function via pointer.</h2>
+    <input type="text" id="f"><br>
+    <button id="exec4">exec</button><br>
+    <span id="result4"></span>
+
+    <hr>
+
+    <h2>Call Rust struct method.</h2>
+    <input type="text" id="g"><br>
+    <button id="append">append</button><button id="concat">concat</button><button id="drop">drop</button><br>
+    <span id="result5"></span>
+
+    <hr>
+
+    <h2>Call predefined js function from Rust.</h2>
+    <!-- see static/emcc-bind.js -->
+    <input type="text" id="h" value="alert('eval!');"><br>
+    <button id="exec6">exec</button>
+
+    <hr>
+
+    <h2>Use emscripten_sleep.</h2>
+    <button id="exec7">exec</button>
+
+    <hr>
+
+    <h2>Call async function synchronously in the Rust land.</h2>
+    <button id="exec8">exec</button><br>
+    <span id="result8"></span>
+
+    <script type='text/javascript'>
+        "use strict";
+
+        const namePrefix = "lib";
+        var Module = {
+            preRun: [],
+            postRun: [],
+            wasmBinaryFile: `${namePrefix}.wasm`,
+            noInitialRun: true, // don't run `fn main()`. but we can call `pub fn add(a: i32, b: i32) -> i32`.
+            print: text => {
+                console.log(text);
+            },
+            printErr: text => {
+                console.warn(text);
+            },
+        };
+        fetch(`${namePrefix}.wasm`)
+            .then(resp => resp.arrayBuffer())
+            .then(ab => {
+                Module.wasmBinary = ab;
+
+                return new Promise(resolve => {
+                    const script = document.createElement("script");
+                    script.src = `${namePrefix}.js`;
+                    script.addEventListener("load", resolve);
+                    document.body.appendChild(script);
+                });
+            })
+            .then(() => {
+                {
+                    const add = Module.cwrap("add", "number", ["number", "number"]);
+
+                    const aEl = document.querySelector("#a");
+                    const bEl = document.querySelector("#b");
+                    const resultEl = document.querySelector("#result1");
+                    const callback = () => {
+                        const a = parseInt(aEl.value);
+                        const b = parseInt(bEl.value);
+                        resultEl.innerText = `${add(a, b)}`;
+                    };
+                    aEl.addEventListener("keyup", callback);
+                    bEl.addEventListener("keyup", callback);
+                }
+                {
+                    const concat = Module.cwrap("concat_c", "string", ["string", "string"]);
+
+                    const cEl = document.querySelector("#c");
+                    const dEl = document.querySelector("#d");
+                    const resultEl = document.querySelector("#result2");
+                    const callback = () => {
+                        const c = cEl.value;
+                        const d = dEl.value;
+                        resultEl.innerText = `${concat(c, d)}`;
+                    };
+                    cEl.addEventListener("keyup", callback);
+                    dEl.addEventListener("keyup", callback);
+                }
+                {
+                    const callbackTwice = (() => {
+                        const rustFunc = Module.cwrap("callback_twice_c", void 0, ["string", "number"]);
+                        return (v, callback) => {
+                            if (typeof v !== "string") {
+                                throw new Error("string required");
+                            }
+                            if (typeof callback !== "function") {
+                                throw new Error("function required");
+                            }
+
+                            let funcRef;
+                            let counter = 0;
+                            const wrapper = ptr => {
+                                const str = Module.Pointer_stringify(ptr);
+                                callback(str);
+
+                                counter += 1;
+                                if (counter === 2) {
+                                    Runtime.removeFunction(funcRef);
+                                }
+                            };
+                            funcRef = Runtime.addFunction(wrapper);
+                            rustFunc(v, funcRef);
+                        };
+                    })();
+
+                    const eEl = document.querySelector("#e");
+                    const buttonEl = document.querySelector("#exec3");
+                    const resultEl = document.querySelector("#result3");
+
+                    buttonEl.addEventListener("click", () => {
+                        buttonEl.disabled = true;
+
+                        const str = eEl.value;
+                        let array = [];
+                        callbackTwice(str, str => {
+                            array.push(str);
+                            resultEl.innerText = JSON.stringify(array);
+                        });
+                    });
+                }
+                {
+                    const rustFunc = (() => {
+                        const getCallbackFunc = Module.cwrap("get_callback_func", "number", []);
+                        return str => {
+                            const fPtr = getCallbackFunc();
+                            const strPtr = Module.allocate(intArrayFromString(str), "i8", ALLOC_NORMAL);
+                            // ii means return value is integer, arguments is single integer.
+                            const ptr = Runtime.dynCall("ii", fPtr, [strPtr]);
+                            Module._free(strPtr);
+                            return Module.Pointer_stringify(ptr);
+                        };
+                    })();
+
+                    const fEl = document.querySelector("#f");
+                    const buttonEl = document.querySelector("#exec4");
+                    const resultEl = document.querySelector("#result4");
+
+                    buttonEl.addEventListener("click", () => {
+                        resultEl.innerText = rustFunc(fEl.value);
+                    });
+                }
+                {
+                    const newStringContainer = Module.cwrap("new_string_container", "number", []);
+                    const stringContainerAppend = Module.cwrap("string_container_append", void 0, ["number", "string"]);
+                    const stringContainerConcatWith = Module.cwrap("string_container_concat_with", "string", ["number"]);
+                    const dropStringContainer = Module.cwrap("drop_string_container", void 0, ["number"]);
+                    class RustStringContainer {
+                        constructor() {
+                            this.ptr = newStringContainer();
+                        }
+                        append(str) {
+                            stringContainerAppend(this.ptr, str);
+                        }
+                        concatWith() {
+                            return stringContainerConcatWith(this.ptr);
+                        }
+                        drop() {
+                            dropStringContainer(this.ptr);
+                        }
+                    }
+
+                    const gEl = document.querySelector("#g");
+                    const appendEl = document.querySelector("#append");
+                    const concatEl = document.querySelector("#concat");
+                    const dropEl = document.querySelector("#drop");
+                    const resultEl = document.querySelector("#result5");
+
+                    let container;
+                    appendEl.addEventListener("click", () => {
+                        if (!container) {
+                            container = new RustStringContainer();
+                        }
+                        container.append(gEl.value);
+                    });
+                    concatEl.addEventListener("click", () => {
+                        if (!container) {
+                            container = new RustStringContainer();
+                        }
+                        resultEl.innerText = container.concatWith();
+                    });
+                    dropEl.addEventListener("click", () => {
+                        if (container) {
+                            container.drop();
+                            container = null;
+                        }
+                    });
+                }
+                {
+                    const execJSEval = Module.cwrap("exec_js_eval_c", void 0, ["string"]);
+
+                    const hEl = document.querySelector("#h");
+                    const buttonEl = document.querySelector("#exec6");
+
+                    buttonEl.addEventListener("click", () => {
+                        execJSEval(hEl.value);
+                    });
+                }
+                {
+                    const execSleep = Module.cwrap("exec_sleep_c", void 0, ["number", "number"]);
+
+                    const buttonEl = document.querySelector("#exec7");
+
+                    buttonEl.addEventListener("click", () => {
+                        let funcRef;
+                        const wrapper = () => {
+                            console.log(`callback from exec_sleep_c ${Date.now()}`);
+                            alert("callback");
+                            Runtime.removeFunction(funcRef);
+                        };
+                        funcRef = Runtime.addFunction(wrapper);
+
+                        execSleep(1000, funcRef);
+                        console.log(`exec_sleep_c called ${Date.now()}`);
+                    });
+                }
+                {
+                    const execAsync = Module.cwrap("exec_async_c", void 0, ["number"]);
+
+                    const buttonEl = document.querySelector("#exec8");
+                    const resultEl = document.querySelector("#result8");
+
+                    buttonEl.addEventListener("click", () => {
+                        const funcRef = Runtime.addFunction(ptr => {
+                            const str = Module.Pointer_stringify(ptr);
+                            resultEl.innerText = str;
+                            Runtime.removeFunction(funcRef);
+                        });
+                        execAsync(funcRef);
+                    });
+                }
+            });
+    </script>
+</body>
+
+</html>

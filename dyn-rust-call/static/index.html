@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<title>exec wasm code</title>
+	<meta charset="UTF-8">
+</head>
+
+<body>
+	<h2>Call Rust function via pointer.</h2>
+	<input type="text" id="f"><br>
+	<button id="exec">exec</button><br>
+	<span id="result"></span>
+
+	<script type='text/javascript'>
+		"use strict";
+
+		const namePrefix = "lib";
+		var Module = {
+			preRun: [],
+			postRun: [],
+			wasmBinaryFile: `${namePrefix}.wasm`,
+			noInitialRun: true, // don't run `fn main()`. but we can call `pub fn add(a: i32, b: i32) -> i32`.
+			print: text => {
+				console.log(text);
+			},
+			printErr: text => {
+				console.warn(text);
+			},
+		};
+		fetch(`${namePrefix}.wasm`)
+			.then(resp => resp.arrayBuffer())
+			.then(ab => {
+				Module.wasmBinary = ab;
+
+				return new Promise(resolve => {
+					const script = document.createElement("script");
+					script.src = `${namePrefix}.js`;
+					script.addEventListener("load", resolve);
+					document.body.appendChild(script);
+				});
+			})
+			.then(() => {
+				const rustFunc = (() => {
+					const getCallbackFunc = Module.cwrap("get_callback_func", "number", []);
+					return str => {
+						const fPtr = getCallbackFunc();
+						const strPtr = Module.allocate(intArrayFromString(str), "i8", ALLOC_NORMAL);
+						// ii means return value is integer, arguments is single integer.
+						const ptr = Runtime.dynCall("ii", fPtr, [strPtr]);
+						Module._free(strPtr);
+						return Module.Pointer_stringify(ptr);
+					};
+				})();
+
+				const fEl = document.querySelector("#f");
+				const buttonEl = document.querySelector("#exec");
+				const resultEl = document.querySelector("#result");
+
+				buttonEl.addEventListener("click", () => {
+					resultEl.innerText = rustFunc(fEl.value);
+				});
+			});
+	</script>
+</body>
+
+</html>

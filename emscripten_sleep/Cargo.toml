@@ -1,0 +1,6 @@
+[package]
+name = "emscripten-sleep"
+version = "0.1.0"
+authors = ["vvakame <vvakame+dev@gmail.com>"]
+
+[dependencies]

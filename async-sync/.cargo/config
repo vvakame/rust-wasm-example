@@ -1,0 +1,7 @@
+[build]
+target = "wasm32-unknown-emscripten"
+
+[target.wasm32-unknown-emscripten]
+# option for emcc
+## hint: use -Os
+rustflags = ["-Clink_args=--js-library static/emcc-bind.js -s ASYNCIFY=1 -s ASYNCIFY_FUNCTIONS=['emscripten_sleep','emscripten_async_resume','exec_async'] -s RESERVED_FUNCTION_POINTERS=20"]

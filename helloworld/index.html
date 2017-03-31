@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>exec wasm code</title>
+	<meta charset="UTF-8">
+</head>
+<body>
+	Open DeveloperTools.
+	<script type='text/javascript'>
+		"use strict";
+
+		const namePrefix = "hello";
+		var Module = {
+			preRun: [],
+			postRun: [],
+			wasmBinaryFile: `${namePrefix}.wasm`,
+			print: text => {
+				console.log(text);
+			},
+			printErr: text => {
+				console.error(text);
+			},
+		};
+		fetch(`${namePrefix}.wasm`)
+			.then(resp => resp.arrayBuffer())
+			.then(ab => {
+				Module.wasmBinary = ab;
+
+				// Emscriptenが生成したbootstrapに丸投げ
+				const script = document.createElement("script");
+				script.src = `${namePrefix}.js`;
+				document.body.appendChild(script);
+			});
+	</script>
+</body>
+</html>

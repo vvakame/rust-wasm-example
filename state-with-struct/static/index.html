@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<title>exec wasm code</title>
+	<meta charset="UTF-8">
+</head>
+
+<body>
+	<h2>Call Rust struct method.</h2>
+	<input type="text" id="g"><br>
+	<button id="append">append</button><button id="concat">concat</button><button id="drop">drop</button><br>
+	<span id="result5"></span>
+
+	<script type='text/javascript'>
+		"use strict";
+
+		const namePrefix = "lib";
+		var Module = {
+			preRun: [],
+			postRun: [],
+			wasmBinaryFile: `${namePrefix}.wasm`,
+			noInitialRun: true, // don't run `fn main()`. but we can call `pub fn add(a: i32, b: i32) -> i32`.
+			print: text => {
+				console.log(text);
+			},
+			printErr: text => {
+				console.warn(text);
+			},
+		};
+		fetch(`${namePrefix}.wasm`)
+			.then(resp => resp.arrayBuffer())
+			.then(ab => {
+				Module.wasmBinary = ab;
+
+				return new Promise(resolve => {
+					const script = document.createElement("script");
+					script.src = `${namePrefix}.js`;
+					script.addEventListener("load", resolve);
+					document.body.appendChild(script);
+				});
+			})
+			.then(() => {
+				const newStringContainer = Module.cwrap("new_string_container", "number", []);
+				const stringContainerAppend = Module.cwrap("string_container_append", void 0, ["number", "string"]);
+				const stringContainerConcatWith = Module.cwrap("string_container_concat_with", "string", ["number"]);
+				const dropStringContainer = Module.cwrap("drop_string_container", void 0, ["number"]);
+				class RustStringContainer {
+					constructor() {
+						this.ptr = newStringContainer();
+					}
+					append(str) {
+						stringContainerAppend(this.ptr, str);
+					}
+					concatWith() {
+						return stringContainerConcatWith(this.ptr);
+					}
+					drop() {
+						dropStringContainer(this.ptr);
+					}
+				}
+
+				const gEl = document.querySelector("#g");
+				const appendEl = document.querySelector("#append");
+				const concatEl = document.querySelector("#concat");
+				const dropEl = document.querySelector("#drop");
+				const resultEl = document.querySelector("#result5");
+
+				let container;
+				appendEl.addEventListener("click", () => {
+					if (!container) {
+						container = new RustStringContainer();
+					}
+					container.append(gEl.value);
+				});
+				concatEl.addEventListener("click", () => {
+					if (!container) {
+						container = new RustStringContainer();
+					}
+					resultEl.innerText = container.concatWith();
+				});
+				dropEl.addEventListener("click", () => {
+					if (container) {
+						container.drop();
+						container = null;
+					}
+				});
+			});
+	</script>
+</body>
+
+</html>

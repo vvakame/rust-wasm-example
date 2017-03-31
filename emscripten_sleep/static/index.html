@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<title>exec wasm code</title>
+	<meta charset="UTF-8">
+</head>
+
+<body>
+	<h2>Use emscripten_sleep.</h2>
+	<button id="exec7">exec</button>
+
+	<script type='text/javascript'>
+		"use strict";
+
+		const namePrefix = "lib";
+		var Module = {
+			preRun: [],
+			postRun: [],
+			wasmBinaryFile: `${namePrefix}.wasm`,
+			noInitialRun: true, // don't run `fn main()`. but we can call `pub fn add(a: i32, b: i32) -> i32`.
+			print: text => {
+				console.log(text);
+			},
+			printErr: text => {
+				console.warn(text);
+			},
+		};
+		fetch(`${namePrefix}.wasm`)
+			.then(resp => resp.arrayBuffer())
+			.then(ab => {
+				Module.wasmBinary = ab;
+
+				return new Promise(resolve => {
+					const script = document.createElement("script");
+					script.src = `${namePrefix}.js`;
+					script.addEventListener("load", resolve);
+					document.body.appendChild(script);
+				});
+			})
+			.then(() => {
+				const execSleep = Module.cwrap("exec_sleep_c", void 0, ["number", "number"]);
+
+				const buttonEl = document.querySelector("#exec7");
+
+				buttonEl.addEventListener("click", () => {
+					let funcRef;
+					const wrapper = () => {
+						console.log(`callback from exec_sleep_c ${Date.now()}`);
+						alert("callback");
+						Runtime.removeFunction(funcRef);
+					};
+					funcRef = Runtime.addFunction(wrapper);
+
+					execSleep(1000, funcRef);
+					console.log(`exec_sleep_c called ${Date.now()}`);
+				});
+			});
+	</script>
+</body>
+
+</html>
